@@ -11,6 +11,7 @@ from decimal import Decimal
 from math import floor, ceil
 
 import numpy as np
+import pandas as pd
 import talib
 
 from .object import BarData, TickData
@@ -692,6 +693,25 @@ class ArrayManager(object):
         if array:
             return result
         return result[-1]
+
+    def kdj(self, fastk_period: int=9,
+            slowk_period: int=3,
+            slowd_period: int=3,
+            array: bool=False):
+        data = pd.DataFrame({
+            'close': self.close,
+            'high': self.high,
+            'low': self.low
+        })
+        data['llv_low'] = data['low'].rolling(fastk_period).min()
+        data['hhv_high'] = data['high'].rolling(fastk_period).max()
+        data['rsv'] = (data['close'] - data['llv_low']) * 100 / (data['hhv_high'] - data['llv_low'])
+        data['k'] = data['rsv'].ewm(adjust=False, alpha=1 / slowk_period).mean()
+        data['d'] = data['k'].ewm(adjust=False, alpha=1 / slowd_period).mean()
+        data['j'] = 3 * data['k'] - 2 * data['d']
+        if array:
+            return data['k'].array, data['d'].array, data['j'].array
+        return data['k'].array[-1], data['d'].array[-1], data['j'].array[-1]
 
     def macd(
         self,
