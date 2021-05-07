@@ -39,6 +39,7 @@ class WindClient:
         self.inited: bool = False
         from WindPy import w
         self.w = w
+        self.w.start()
 
     def init(self) -> bool:
         """"""
@@ -46,7 +47,6 @@ class WindClient:
         if self.inited:
             return True
 
-        self.w.start()
         if self.w.isconnected():
             self.inited = True
             return True
@@ -116,14 +116,6 @@ class WindClient:
         start = req.start
         end = req.end
 
-        wind_symbol = self.to_wind_symbol(symbol, exchange)
-        # if wind_symbol not in self.symbols:
-        #     return None
-
-        rq_interval = INTERVAL_VT2RQ.get(interval)
-        if not rq_interval:
-            return None
-
         # For adjust timestamp from bar close point (RQData) to open point (VN Trader)
         adjustment = INTERVAL_ADJUSTMENT_MAP[interval]
 
@@ -133,40 +125,31 @@ class WindClient:
         # Only query open interest for futures contract
         fields = ["open", "high", "low", "close", "volume"]
         if not symbol.isdigit():
-            fields.append("open_interest")
+            fields.append("oi")
 
-        df = rqdata_get_price(
-            wind_symbol,
-            frequency=rq_interval,
-            fields=fields,
-            start_date=start,
-            end_date=end,
-            adjust_type="none"
-        )
+        result = self.w.wsi('{}.{}'.format(symbol, exchange.value[:3]), 'open,close,high,low,volume,oi',
+                            start.strftime("%Y-%m-%d %H:%M:%S"), end.strftime("%Y-%m-%d %H:%M:%S"), 'BarSize=1')
 
+        open_, close, high, low, volume, oi = result.Data
+        time_list = result.Times
+        total_num = len(open_)
         data: List[BarData] = []
-
-        if df is not None:
-            for ix, row in df.iterrows():
-                dt = row.name.to_pydatetime() - adjustment
-                dt = CHINA_TZ.localize(dt)
-
-                bar = BarData(
+        for i in range(total_num):
+            data.append(
+                BarData(
                     symbol=symbol,
-                    exchange=exchange,
-                    interval=interval,
-                    datetime=dt,
-                    open_price=round_to(row["open"], 0.000001),
-                    high_price=round_to(row["high"], 0.000001),
-                    low_price=round_to(row["low"], 0.000001),
-                    close_price=round_to(row["close"], 0.000001),
-                    volume=row["volume"],
-                    open_interest=row.get("open_interest", 0),
-                    gateway_name="RQ"
+                    exchange=exchange.value,
+                    interval=Interval.MINUTE,
+                    datetime=time_list[i],
+                    open_price=open_[i],
+                    close_price=close[i],
+                    high_price=high[i],
+                    low_price=low[i],
+                    volume=volume[i],
+                    open_interest=oi[i],
+                    gateway_name='WIND'
                 )
-
-                data.append(bar)
-
+            )
         return data
 
     def query_tick_history(self, req: HistoryRequest) -> Optional[List[TickData]]:

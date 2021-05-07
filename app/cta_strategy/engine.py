@@ -9,10 +9,12 @@ from typing import Any, Callable
 from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor
 from copy import copy
+
 from tzlocal import get_localzone
 
 from vnpy.event import Event, EventEngine
 from vnpy.trader.engine import BaseEngine, MainEngine
+from vnpy.trader.wind import wind_client
 from vnpy.trader.object import (
     OrderRequest,
     SubscribeRequest,
@@ -146,6 +148,22 @@ class CtaEngine(BaseEngine):
             end=end
         )
         data = rqdata_client.query_history(req)
+        return data
+
+    def query_bar_from_wind(
+        self, symbol: str, exchange: Exchange, interval: Interval, start: datetime, end: datetime
+    ):
+        """
+        Query bar data from RQData.
+        """
+        req = HistoryRequest(
+            symbol=symbol,
+            exchange=exchange,
+            interval=interval,
+            start=start,
+            end=end
+        )
+        data = wind_client.query_history(req)
         return data
 
     def process_tick_event(self, event: Event):
@@ -568,11 +586,9 @@ class CtaEngine(BaseEngine):
                     end=end
                 )
                 bars = self.main_engine.query_history(req, contract.gateway_name)
-
             # Try to query bars from RQData, if not found, load from database.
             else:
-                bars = self.query_bar_from_rq(symbol, exchange, interval, start, end)
-
+                bars = self.query_bar_from_wind(symbol, exchange, interval, start, end)
         if not bars:
             bars = database_manager.load_bar_data(
                 symbol=symbol,

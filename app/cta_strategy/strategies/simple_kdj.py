@@ -44,18 +44,20 @@ class SimpleKdjStrategy(CtaTemplate):
         self.bg = BarGenerator(self.on_bar)
         self.am = ArrayManager()
 
-        self.bg5 = BarGenerator(self.on_bar, 5, self.on_5min_bar)
+        self.bg5 = BarGenerator(self.on_bar, 15, self.on_5min_bar)
         self.am5 = ArrayManager()
 
         self.bg15 = BarGenerator(self.on_bar, 15, self.on_15min_bar)
         self.am15 = ArrayManager()
+
+        self.file = open('kdj_value.txt', 'w+')
 
     def on_init(self):
         """
         Callback when strategy is inited.
         """
         self.write_log("策略初始化")
-        self.load_bar(10)
+        self.load_bar(1)
 
     def on_start(self):
         """
@@ -68,6 +70,7 @@ class SimpleKdjStrategy(CtaTemplate):
         Callback when strategy is stopped.
         """
         self.write_log("策略停止")
+        self.file.close()
 
     def on_tick(self, tick: TickData):
         """
@@ -79,13 +82,12 @@ class SimpleKdjStrategy(CtaTemplate):
         """
         Callback of new bar data update.
         """
-        self.write_log(f'达到上线价格：{bar.close_price}')
         self.bg5.update_bar(bar)
         self.bg15.update_bar(bar)
         self.am.update_bar(bar)
         if not self.am.inited:
             return
-        print(self.am.kdj(only_close=True))
+        self.file.write(f'{self.am.kdj(only_close=True)}, {bar.datetime}\n')
 
     def on_5min_bar(self, bar: BarData):
         """"""

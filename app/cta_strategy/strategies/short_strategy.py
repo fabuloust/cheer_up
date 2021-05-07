@@ -21,14 +21,80 @@ from vnpy.trader.constant import Interval
 class LongSignal(CtaSignal):
     """"""
 
-    def __init__(self, rsi_window: int, rsi_level: float):
+    def __init__(self, period_hour: int):
         """Constructor"""
         super().__init__()
 
-        self.rsi_window = rsi_window
-        self.rsi_level = rsi_level
-        self.rsi_long = 50 + self.rsi_level
-        self.rsi_short = 50 - self.rsi_level
+        self.bg = BarGenerator(self.on_bar, period_hour, self.on_long_period, Interval.HOUR)
+        self.am = ArrayManager()
+
+    def on_tick(self, tick: TickData):
+        """
+        Callback of new tick data update.
+        """
+        self.bg.update_tick(tick)
+
+    def on_bar(self, bar: BarData):
+        """
+        Callback of new bar data update.
+        """
+        self.bg.update_bar(bar)
+
+    def on_long_period(self, bar: BarData):
+        self.am.update_bar(bar)
+        if not self.am.inited:
+            self.set_signal_pos(0)
+            return
+
+
+class MidSignal(CtaSignal):
+    """
+    短周期信号管理
+    """
+
+    def __init__(self, period_minute: int):
+        """"""
+        super().__init__()
+
+        self.bg = BarGenerator(self.on_bar, period_minute, self.on_short_period_bar, Interval.MINUTE)
+        self.am = ArrayManager()
+        self.kdj_signal = KdjSignal()
+        self.macd_signal = MacdSignal()
+
+    def on_tick(self, tick: TickData):
+        """
+        Callback of new tick data update.
+        """
+        self.bg.update_tick(tick)
+
+    def on_bar(self, bar: BarData):
+        """
+        Callback of new bar data update.
+        """
+        self.bg.update_bar(bar)
+
+    def on_short_period_bar(self, bar: BarData):
+        """
+
+        :param bar:
+        :return:
+        """
+        self.am.update_bar(bar)
+        self.kdj_signal.on_bar(bar)
+        if not self.am.inited:
+            self.set_signal_pos(0)
+        # 开始计算各种东西
+        self
+
+
+class ShortSignal(CtaSignal):
+    """
+    短周期信号管理
+    """
+
+    def __init__(self):
+        """"""
+        super().__init__()
 
         self.bg = BarGenerator(self.on_bar)
         self.am = ArrayManager()
@@ -46,67 +112,10 @@ class LongSignal(CtaSignal):
         self.am.update_bar(bar)
         if not self.am.inited:
             self.set_signal_pos(0)
-
-        rsi_value = self.am.rsi(self.rsi_window)
-
-        if rsi_value >= self.rsi_long:
-            self.set_signal_pos(1)
-        elif rsi_value <= self.rsi_short:
-            self.set_signal_pos(-1)
-        else:
-            self.set_signal_pos(0)
-
-
-class MidSignal(CtaSignal):
-    """
-    短周期信号管理
-    """
-
-    def __init__(self, cci_window: int, cci_level: float):
-        """"""
-        super().__init__()
-
-        self.cci_window = cci_window
-        self.cci_level = cci_level
-        self.cci_long = self.cci_level
-        self.cci_short = -self.cci_level
-
-        self.bg = BarGenerator(self.on_bar, 2, self.on_2_hour_bar, Interval.HOUR)
-        self.am = ArrayManager()
-
-    def on_tick(self, tick: TickData):
-        """
-        Callback of new tick data update.
-        """
-        self.bg.update_tick(tick)
-
-    def on_bar(self, bar: BarData):
-        """
-        Callback of new bar data update.
-        """
-        self.bg.update_bar(bar)
-        # if not self.am.inited:
-        #     self.set_signal_pos(0)
-        #
-        # cci_value = self.am.cci(self.cci_window)
-        #
-        # if cci_value >= self.cci_long:
-        #     self.set_signal_pos(1)
-        # elif cci_value <= self.cci_short:
-        #     self.set_signal_pos(-1)
-        # else:
-        #     self.set_signal_pos(0)
-
-    def on_2_hour_bar(self, bar: BarData):
-        """
-
-        :param bar:
-        :return:
-        """
-        self.am.update_bar(bar)
-        if not self.am.inited:
-            self.set_signal_pos(0)
+            return
         # 开始计算各种东西
+        k, d, j = self.am.kdj(only_close=True)
+        # do sth
 
 
 
@@ -194,14 +203,14 @@ class KdjSignal(CtaSignal):
             self.set_signal_pos(0)
 
 
-class MultiSignalStrategy(TargetPosTemplate):
+class HxtStrategy(TargetPosTemplate):
     """"""
 
-    author = "用Python的交易员"
+    author = "HXT"
 
-    rsi_window = 14
-    rsi_level = 20
-    cci_window = 30
+    long_period = 120
+    mid_period = 15
+
     cci_level = 10
     fast_window = 5
     slow_window = 20
@@ -218,9 +227,9 @@ class MultiSignalStrategy(TargetPosTemplate):
 
         self.l
 
-        self.rsi_signal = RsiSignal(self.rsi_window, self.rsi_level)
-        self.cci_signal = CciSignal(self.cci_window, self.cci_level)
-        self.ma_signal = MaSignal(self.fast_window, self.slow_window)
+        self.long_signal = LongSignal(self.rsi_window, self.rsi_level)
+        self.mid_signal = MidSignal(self.cci_window, self.cci_level)
+        self.short_signal = ShortSignal(self.fast_window, self.slow_window)
 
         self.signal_pos = {
             "rsi": 0,
