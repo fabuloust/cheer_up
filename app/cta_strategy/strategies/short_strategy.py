@@ -45,6 +45,12 @@ class LongSignal(CtaSignal):
         if not self.am.inited:
             self.set_signal_pos(0)
             return
+        ma10 = self.am.sma(10, True)[:5]
+        ma20 = self.am.sma(20, True)[:5]
+        ma30 = self.am.sma(30, True)[:5]
+        ma40 = self.am.sma(40, True)[:5]
+        ma50 = self.am.sma(50, True)[:5]
+        ma60 = self.am.sma(60, True)[:5]
 
 
 class MidSignal(CtaSignal):
@@ -125,9 +131,6 @@ class MacdSignal(CtaSignal):
     def __init__(self, fast_window: int, slow_window: int):
         """"""
         super().__init__()
-
-        self.fast_window = fast_window
-        self.slow_window = slow_window
 
         self.bg = BarGenerator(self.on_bar, 5, self.on_5min_bar)
         self.am = ArrayManager()
