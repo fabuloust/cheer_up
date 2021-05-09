@@ -693,9 +693,7 @@ class ArrayManager(object):
             return result
         return result[-1]
 
-    def kdj(self, fastk_period: int = 9,
-            slowk_period: int = 3,
-            slowd_period: int = 3,
+    def kdj(self, fastk_period: int = 9, slowk_period: int = 3, slowd_period: int = 3,
             array: bool = False,
             only_close: bool = False):
         data = pd.DataFrame({
@@ -719,9 +717,9 @@ class ArrayManager(object):
 
     def macd(
             self,
-            fast_period: int,
-            slow_period: int,
-            signal_period: int,
+            fast_period: int = 12,
+            slow_period: int = 26,
+            signal_period: int = 9,
             array: bool = False
     ) -> Union[
         Tuple[np.ndarray, np.ndarray, np.ndarray],
@@ -730,12 +728,13 @@ class ArrayManager(object):
         """
         MACD.
         """
-        macd, signal, hist = talib.MACD(
-            self.close, fast_period, slow_period, signal_period
-        )
+        diff, dea, macd = talib.MACDEXT(self.close, fastperiod=fast_period, fastmatype=1,
+                                        slowperiod=slow_period, slowmatype=1,
+                                        signalperiod=signal_period, signalmatype=1)
+        macd = macd * 2
         if array:
-            return macd, signal, hist
-        return macd[-1], signal[-1], hist[-1]
+            return diff, dea, macd
+        return diff[-1], dea[-1], macd[-1]
 
     def adx(self, n: int, array: bool = False) -> Union[float, np.ndarray]:
         """

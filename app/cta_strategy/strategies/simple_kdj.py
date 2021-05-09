@@ -88,6 +88,7 @@ class SimpleKdjStrategy(CtaTemplate):
         if not self.am.inited:
             return
         self.file.write(f'{self.am.kdj(only_close=True)}, {bar.datetime}\n')
+        
 
     def on_5min_bar(self, bar: BarData):
         """"""
