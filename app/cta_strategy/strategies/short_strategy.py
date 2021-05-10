@@ -51,7 +51,7 @@ class LongSignal(CtaSignal):
             # 1.均线多头排列
             # 2.价格创最近30个bar的新高
             if ma10[-1] > ma20[-1] > ma30[-1] > ma60[-1] and not (ma10[-2] > ma20[-2] > ma30[-2] > ma60[-2]) and \
-                self.am.close[-30:].max() == self.am.close[-1]:
+                 self.am.close[-30:].max() == self.am.close[-1]:
                 self.ma_state = MaState.LONG
                 self.last_high = self.am.close[-30:-4].max
             elif ma10[-1] < ma20[-1] < ma30[-1] < ma60[-1] and not (ma10[-2] < ma20[-2] < ma30[-2] < ma60[-2]) and \
@@ -61,7 +61,7 @@ class LongSignal(CtaSignal):
         elif self.ma_state == MaState.LONG:
             # 先想想吧
             pass
-        else:
+        elif self.ma_state == MaState.SHORT:
             pass
 
             
@@ -78,8 +78,10 @@ class LongSignal(CtaSignal):
         ma60 = self.am.sma(60, True)[:5]
         old_state = self.ma_state
         self.cal_ma_state(ma10, ma20, ma30, ma60)
-        if old_state != self.ma_state:
-            self.
+        if old_state == MaState.BLANK:
+            if self.ma_state == MaState.LONG:
+                # 进入建仓期
+                self.set_signal_pos(1)
         k, d, j = self.am.kdj()
         diff, dea, macd = self.am.macd()
 
