@@ -15,7 +15,7 @@ from vnpy.app.cta_strategy import (
     CtaSignal,
     TargetPosTemplate
 )
-from vnpy.app.cta_strategy.strategies.consts import MaState, KdjState
+from vnpy.app.cta_strategy.strategies.consts import MaState, KdjState, KdjThreshold
 from vnpy.trader.constant import Interval
 
 
@@ -52,19 +52,17 @@ class LongSignal(CtaSignal):
             # 2.价格创最近30个bar的新高
             if ma10[-1] > ma20[-1] > ma30[-1] > ma60[-1] and not (ma10[-2] > ma20[-2] > ma30[-2] > ma60[-2]) and \
                  self.am.close[-30:].max() == self.am.close[-1]:
-                self.ma_state = MaState.LONG
-                self.last_high = self.am.close[-30:-4].max
+                self.ma_state = MaState.START_LONG
+                self.last_high = self.am.close[-30:-4].max()
             elif ma10[-1] < ma20[-1] < ma30[-1] < ma60[-1] and not (ma10[-2] < ma20[-2] < ma30[-2] < ma60[-2]) and \
                 self.am.close[-30:].min() == self.am.close[-1]:
-                self.ma_state = MaState.LONG
-                self.last_low = self.am.close[-30:-4].min
+                self.ma_state = MaState.START_SHORT
+                self.last_low = self.am.close[-30:-4].min()
         elif self.ma_state == MaState.LONG:
             # 先想想吧
             pass
         elif self.ma_state == MaState.SHORT:
             pass
-
-            
 
     def on_long_period(self, bar: BarData):
         self.am.update_bar(bar)
@@ -78,12 +76,18 @@ class LongSignal(CtaSignal):
         ma60 = self.am.sma(60, True)[:5]
         old_state = self.ma_state
         self.cal_ma_state(ma10, ma20, ma30, ma60)
-        if old_state == MaState.BLANK:
-            if self.ma_state == MaState.LONG:
-                # 进入建仓期
-                self.set_signal_pos(1)
         k, d, j = self.am.kdj()
         diff, dea, macd = self.am.macd()
+        if old_state == MaState.BLANK:
+            if self.ma_state == MaState.START_LONG:
+                # 进入建仓期
+                if j < KdjThreshold.KDJ_HIGH:
+                    self.set_signal_pos(1)
+            elif self.ma_state == MaState.START_SHORT:
+                # 进入建仓期
+                if j < KdjThreshold.KDJ_LOW:
+                    self.set_signal_pos(-1)
+
 
 
 class MidSignal(CtaSignal):
@@ -105,12 +109,14 @@ class MidSignal(CtaSignal):
         Callback of new tick data update.
         """
         self.bg.update_tick(tick)
+        self.kdj_signal.on_tick(tick)
 
     def on_bar(self, bar: BarData):
         """
         Callback of new bar data update.
         """
         self.bg.update_bar(bar)
+        self.kdj_signal.on_bar(bar)
 
     def on_short_period_bar(self, bar: BarData):
         """
@@ -201,14 +207,15 @@ class MacdSignal(CtaSignal):
 class KdjSignal(CtaSignal):
     """"""
 
-    def __init__(self, fast_window: int, slow_window: int):
+    def __init__(self):
         """"""
         super().__init__()
 
-        self.fast_window = fast_window
-        self.slow_window = slow_window
-
-        self.bg = BarGenerator(self.on_bar, 5, self.on_5min_bar)
+        self.last_over_buy_value = 0
+        self.last_over_sell_value = 0
+        self.last_state = KdjState.BLANK
+        self.state = KdjState.BLANK
+        self.bg = BarGenerator(self.on_bar, 15, self.on_5min_bar)
         self.am = ArrayManager()
 
     def on_tick(self, tick: TickData):
@@ -229,15 +236,14 @@ class KdjSignal(CtaSignal):
         if not self.am.inited:
             self.set_signal_pos(0)
 
-        fast_ma = self.am.sma(self.fast_window)
-        slow_ma = self.am.sma(self.slow_window)
-
-        if fast_ma > slow_ma:
-            self.set_signal_pos(1)
-        elif fast_ma < slow_ma:
-            self.set_signal_pos(-1)
-        else:
-            self.set_signal_pos(0)
+        _, _, j = self.am.kdj()
+        if j > KdjThreshold.KDJ_HIGH:
+            if self.state == KdjState.BLANK:
+                pass
+            elif self.state == KdjState.OVER_BUY:
+                pass
+            else:
+                pass
 
 
 class HxtStrategy(TargetPosTemplate):
