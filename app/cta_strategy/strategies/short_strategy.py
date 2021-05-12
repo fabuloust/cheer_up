@@ -101,7 +101,7 @@ class MidSignal(CtaSignal):
 
         self.bg = BarGenerator(self.on_bar, period_minute, self.on_short_period_bar, Interval.MINUTE)
         self.am = ArrayManager()
-        self.kdj_signal = KdjSignal()
+        self.kdj_signal = KdjSignal_1()
         self.macd_signal = MacdSignal()
 
     def on_tick(self, tick: TickData):
@@ -117,6 +117,7 @@ class MidSignal(CtaSignal):
         """
         self.bg.update_bar(bar)
         self.kdj_signal.on_bar(bar)
+        self.macd_signal.on_bar(bar)
 
     def on_short_period_bar(self, bar: BarData):
         """
@@ -125,11 +126,13 @@ class MidSignal(CtaSignal):
         :return:
         """
         self.am.update_bar(bar)
-        self.kdj_signal.on_bar(bar)
         if not self.am.inited:
             self.set_signal_pos(0)
         # 通过macd和kdj给出相关信号
-        self
+        if self.kdj_signal.get_signal_pos() == 1 and self.macd_signal.get_signal_pos() == 1:
+            self.set_signal_pos(1)
+        elif self.kdj_signal.get_signal_pos() == -1 and self.macd_signal.get_signal_pos() == -1:
+            self.set_signal_pos(-1)
 
 
 class ShortSignal(CtaSignal):
@@ -144,6 +147,7 @@ class ShortSignal(CtaSignal):
 
         self.bg = BarGenerator(self.on_bar)
         self.am = ArrayManager()
+        self.kdj_signal = KdjSignal()
 
     def on_tick(self, tick: TickData):
         """
@@ -204,10 +208,31 @@ class MacdSignal(CtaSignal):
             self.set_signal_pos(0)
 
 
-class KdjSignal(CtaSignal):
+class KdjState:
+
+    def __init__(self, state, k=0.0, d=0.0, j=0.0, high=0.0, low=0.0):
+        self.state = state
+        self.k = k
+        self.d = d
+        self.j = j
+        self.high = high
+        self.low = low
+
+    def update(self, k=None, d=None, j=None, high=None, low=None):
+        if self.state == 0:
+            for key, value in zip(('k', 'd', 'j', 'high', 'low'), (k, d, j, high, low)):
+                if value is not None:
+                    self.__setattr__(key, min(value,self.__getattribute__(key)))
+        else:
+            for key, value in zip(('k', 'd', 'j', 'high', 'low'), (k, d, j, high, low)):
+                if value is not None:
+                    self.__setattr__(key, max(value,self.__getattribute__(key)))
+
+
+class KdjSignal_1(CtaSignal):
     """"""
 
-    def __init__(self):
+    def __init__(self, only_close=False):
         """"""
         super().__init__()
 
@@ -215,8 +240,9 @@ class KdjSignal(CtaSignal):
         self.last_over_sell_value = 0
         self.last_state = KdjState.BLANK
         self.state = KdjState.BLANK
-        self.bg = BarGenerator(self.on_bar, 15, self.on_5min_bar)
+        self.bg = BarGenerator(self.on_bar, 15, self.on_15min_bar)
         self.am = ArrayManager()
+        self.only_close = only_close
 
     def on_tick(self, tick: TickData):
         """
@@ -230,7 +256,7 @@ class KdjSignal(CtaSignal):
         """
         self.bg.update_bar(bar)
 
-    def on_5min_bar(self, bar: BarData):
+    def on_15min_bar(self, bar: BarData):
         """"""
         self.am.update_bar(bar)
         if not self.am.inited:
@@ -246,17 +272,73 @@ class KdjSignal(CtaSignal):
                 pass
 
 
+class KdjSignal_2(CtaSignal):
+    """
+    分时的kdj
+    """
+
+    def __init__(self, only_close=True):
+        """"""
+        super().__init__()
+
+        self.last_over_buy_state = None
+        self.last_over_sell_state = None
+        self.last_state = None
+        self.cur_state = None
+        self.bg = BarGenerator(self.on_bar)
+        self.am = ArrayManager()
+        self.only_close = only_close
+
+    def on_tick(self, tick: TickData):
+        """
+        Callback of new tick data update.
+        """
+        self.bg.update_tick(tick)
+
+    def on_bar(self, bar: BarData):
+        """
+        Callback of new bar data update.
+        """
+        self.am.update_bar(bar)
+        if not self.am.inited:
+            self.set_signal_pos(0)
+
+        k, _, _ = self.am.kdj(self.only_close)
+        if self.cur_state:
+            if self.cur_state.state == 1:
+                if k < self.cur_state.k:
+                    self.set_signal_pos(-1)
+            elif self.cur_state.state == 0:
+                if k > self.cur_state.k:
+                    self.set_signal_pos(1)
+
+        if k >= KdjThreshold.KDJ_HIGH:
+            if not self.cur_state:
+                self.cur_state = KdjState(state=1, k=k, high=bar.close_price)
+            else:
+                self.cur_state.update(k=k, high=bar.close_price)
+        elif k <= KdjThreshold.KDJ_LOW:
+            if not self.cur_state:
+                self.cur_state = KdjState(state=1, k=k, low=bar.close_price)
+            else:
+                self.cur_state.update(k=k, low=bar.close_price)
+        else:
+            if not self.last_state and self.cur_state:
+                self.last_state = self.cur_state
+            if self.last_state.state == 0:
+                self.last_over_sell_state = self.last_state
+            else:
+                self.last_over_buy_state = self.last_state
+            self.cur_state = None
+
+
 class HxtStrategy(TargetPosTemplate):
     """"""
 
     author = "HXT"
 
-    long_period = 120
-    mid_period = 15
-
-    cci_level = 10
-    fast_window = 5
-    slow_window = 20
+    long_period = 2   # hour
+    mid_period = 15   # minute
 
     signal_pos = {}
 
@@ -307,8 +389,6 @@ class HxtStrategy(TargetPosTemplate):
         self.mid_signal.on_tick(tick)
         self.short_signal.on_tick(tick)
 
-        self.calculate_target_pos()
-
     def on_bar(self, bar: BarData):
         """
         Callback of new bar data update.
@@ -319,19 +399,14 @@ class HxtStrategy(TargetPosTemplate):
         self.mid_signal.on_bar(bar)
         self.short_signal.on_bar(bar)
 
-        self.calculate_target_pos()
-
-    def calculate_target_pos(self):
-        """"""
-        self.signal_pos["rsi"] = self.long_signal.get_signal_pos()
-        self.signal_pos["cci"] = self.mid_signal.get_signal_pos()
-        self.signal_pos["ma"] = self.short_signal.get_signal_pos()
-
-        target_pos = 0
-        for v in self.signal_pos.values():
-            target_pos += v
-
-        self.set_target_pos(target_pos)
+        if self.long_signal.get_signal_pos() == 1 and self.mid_signal.get_signal_pos() == 1 and \
+                self.short_signal.get_signal_pos() == 1:
+            if self.pos == 0:
+                self.buy(bar.close_price, 1)
+        if self.long_signal.get_signal_pos() == -1 and self.mid_signal.get_signal_pos() == -1 and \
+                self.short_signal.get_signal_pos() == -1:
+            if self.pos == 0:
+                self.short(bar.close_price, 1)
 
     def on_order(self, order: OrderData):
         """
