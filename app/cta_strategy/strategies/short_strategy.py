@@ -343,7 +343,7 @@ class HxtStrategy(TargetPosTemplate):
     signal_pos = {}
 
     parameters = []
-    variables = ["signal_pos", "target_pos"]
+    variables = []
 
     def __init__(self, cta_engine, strategy_name, vt_symbol, setting):
         """"""

@@ -8,46 +8,32 @@ from vnpy.app.cta_strategy import (
     BarGenerator,
     ArrayManager,
 )
+from vnpy.trader.constant import Interval
 
 
-class SimpleKdjStrategy(CtaTemplate):
+class WatchKdjStrategy(CtaTemplate):
     """"""
     author = "用Python的交易员"
 
-    rsi_signal = 20
-    rsi_window = 14
-    fast_window = 5
-    slow_window = 20
+
     fixed_size = 1
 
-    rsi_value = 0
-    rsi_long = 0
-    rsi_short = 0
-    fast_ma = 0
-    slow_ma = 0
-    ma_trend = 0
+    parameters = []
 
-    parameters = ["rsi_signal", "rsi_window",
-                  "fast_window", "slow_window",
-                  "fixed_size"]
-
-    variables = ["rsi_value", "rsi_long", "rsi_short",
-                 "fast_ma", "slow_ma", "ma_trend"]
+    variables = ['']
 
     def __init__(self, cta_engine, strategy_name, vt_symbol, setting):
         """"""
         super().__init__(cta_engine, strategy_name, vt_symbol, setting)
 
-        self.rsi_long = 50 + self.rsi_signal
-        self.rsi_short = 50 - self.rsi_signal
 
         self.bg = BarGenerator(self.on_bar)
         self.am = ArrayManager()
 
-        self.bg5 = BarGenerator(self.on_bar, 15, self.on_5min_bar)
-        self.am5 = ArrayManager()
+        self.bg_day = BarGenerator(self.on_bar, 1, self.on_day_bar, interval=Interval.DAILY)
+        self.am_day = ArrayManager()
 
-        self.bg15 = BarGenerator(self.on_bar, 15, self.on_15min_bar)
+        self.bg15 = BarGenerator(self.on_bar, 1, self.on_15min_bar, interval=Interval.HOUR)
         self.am15 = ArrayManager()
 
         self.file = open('kdj_value.txt', 'w+')
@@ -82,12 +68,13 @@ class SimpleKdjStrategy(CtaTemplate):
         """
         Callback of new bar data update.
         """
-        self.bg5.update_bar(bar)
-        self.bg15.update_bar(bar)
+        # self.bg5.update_bar(bar)
+        # self.bg15.update_bar(bar)
+        self.bg_day.update_bar(bar)
         self.am.update_bar(bar)
         if not self.am.inited:
             return
-        self.file.write(f'{self.am.kdj(only_close=True)}, {bar.datetime}\n')
+        # self.file.write(f'{self.am.kdj(only_close=True)}, {bar.datetime}\n')
         
 
     def on_5min_bar(self, bar: BarData):
@@ -98,10 +85,6 @@ class SimpleKdjStrategy(CtaTemplate):
         if not self.am5.inited:
             return
 
-        if not self.ma_trend:
-            return
-
-        self.rsi_value = self.am5.rsi(self.rsi_window)
 
         # if self.pos == 0:
         #     if self.ma_trend > 0 and self.rsi_value >= self.rsi_long:
@@ -121,17 +104,18 @@ class SimpleKdjStrategy(CtaTemplate):
 
     def on_15min_bar(self, bar: BarData):
         """"""
+        self.file.write(f'{bar.datetime}@@\n')
         self.am15.update_bar(bar)
         if not self.am15.inited:
             return
 
-        self.fast_ma = self.am15.sma(self.fast_window)
-        self.slow_ma = self.am15.sma(self.slow_window)
+    def on_day_bar(self, bar: BarData):
+        """"""
+        self.file.write(f'{bar.datetime}@@\n')
+        self.am_day.update_bar(bar)
+        if not self.am15.inited:
+            return
 
-        if self.fast_ma > self.slow_ma:
-            self.ma_trend = 1
-        else:
-            self.ma_trend = -1
 
     def on_order(self, order: OrderData):
         """
