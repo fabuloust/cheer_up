@@ -2,9 +2,8 @@ from datetime import timedelta
 from typing import List, Optional
 from pytz import timezone
 
+import numpy as np
 from numpy import ndarray
-from rqdatac import init as rqdata_init
-from rqdatac.services.basic import all_instruments as rqdata_all_instruments
 from rqdatac.services.get_price import get_price as rqdata_get_price
 from rqdatac.share.errors import AuthenticationFailed
 
@@ -82,9 +81,9 @@ class WindClient:
             # Futures
             if time_str.isdigit():
                 # 万德的前面不变，exchange取前三位
-                return f'{symbol.upper()}.{exchange.value[:3]}'
+                wind_symbol = f'{symbol.upper()}.{exchange.value[:3]}'
 
-            # Options
+            # Options, 有问题，用的时候再说
             else:
                 if exchange in [Exchange.CFFEX, Exchange.DCE, Exchange.SHFE]:
                     wind_symbol = symbol.replace("-", "").upper()
@@ -116,40 +115,47 @@ class WindClient:
         start = req.start
         end = req.end
 
+        wind_symbol = self.to_wind_symbol(symbol, exchange)
         # For adjust timestamp from bar close point (RQData) to open point (VN Trader)
         adjustment = INTERVAL_ADJUSTMENT_MAP[interval]
 
         # For querying night trading period data
         end += timedelta(1)
-
-        # Only query open interest for futures contract
-        fields = ["open", "high", "low", "close", "volume"]
-        if not symbol.isdigit():
-            fields.append("oi")
-
-        result = self.w.wsi('{}.{}'.format(symbol, exchange.value[:3]), 'open,close,high,low,volume,oi',
-                            start.strftime("%Y-%m-%d %H:%M:%S"), end.strftime("%Y-%m-%d %H:%M:%S"), 'BarSize=1')
-
-        open_, close, high, low, volume, oi = result.Data
-        time_list = result.Times
-        total_num = len(open_)
         data: List[BarData] = []
-        for i in range(total_num):
-            data.append(
-                BarData(
-                    symbol=symbol,
-                    exchange=exchange.value,
-                    interval=Interval.MINUTE,
-                    datetime=time_list[i],
-                    open_price=open_[i],
-                    close_price=close[i],
-                    high_price=high[i],
-                    low_price=low[i],
-                    volume=volume[i],
-                    open_interest=oi[i],
-                    gateway_name='WIND'
+        while start < end:
+            temp = start + timedelta(days=10)
+            result = self.w.wsi('{}.{}'.format(*wind_symbol.split('.')), 'open,close,high,low,volume,oi',
+                                start.strftime("%Y-%m-%d %H:%M:%S"), temp.strftime("%Y-%m-%d %H:%M:%S"), 'BarSize=1')
+
+            try:
+                open_, close, high, low, volume, oi = result.Data
+                time_list = result.Times
+            except Exception as e:
+                if temp > end:
+                    return data
+                with open('value_test', 'w+') as f:
+                    f.write(f'{result.Data}-{start}-{temp}-{end}')
+                raise
+            start = temp
+            total_num = len(open_)
+            for i in range(total_num):
+                if np.isnan(open_[i]):
+                    continue
+                data.append(
+                    BarData(
+                        symbol=symbol,
+                        exchange=exchange,
+                        interval=Interval.MINUTE,
+                        datetime=time_list[i],
+                        open_price=open_[i],
+                        close_price=close[i],
+                        high_price=high[i],
+                        low_price=low[i],
+                        volume=volume[i],
+                        open_interest=oi[i],
+                        gateway_name='WIND'
+                    )
                 )
-            )
         return data
 
     def query_tick_history(self, req: HistoryRequest) -> Optional[List[TickData]]:
