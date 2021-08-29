@@ -40,6 +40,7 @@ from vnpy.trader.constant import (
 )
 from vnpy.trader.utility import load_json, save_json, extract_vt_symbol, round_to
 from vnpy.trader.rqdata import rqdata_client
+from vnpy.trader.wind import wind_client
 from vnpy.trader.converter import OffsetConverter
 from vnpy.trader.database import database_manager
 
@@ -108,7 +109,8 @@ class CtaEngine(BaseEngine):
     def init_engine(self):
         """
         """
-        self.init_rqdata()
+        # self.init_rqdata()
+        self.init_wind_client()
         self.load_strategy_class()
         self.load_strategy_setting()
         self.load_strategy_data()
@@ -134,6 +136,14 @@ class CtaEngine(BaseEngine):
         if result:
             self.write_log("RQData数据接口初始化成功")
 
+    def init_wind_client(self):
+        """
+        init wind client
+        """
+        result = wind_client.init()
+        if result:
+            self.write_log('wind数据初始化成功')
+
     def query_bar_from_rq(
         self, symbol: str, exchange: Exchange, interval: Interval, start: datetime, end: datetime
     ):
@@ -147,7 +157,8 @@ class CtaEngine(BaseEngine):
             start=start,
             end=end
         )
-        data = rqdata_client.query_history(req)
+        # data = rqdata_client.query_history(req)
+        data = wind_client.query_history(req)
         return data
 
     def query_bar_from_wind(
