@@ -189,6 +189,7 @@ class BarGenerator:
         self.interval_count: int = 0
 
         self.hour_bar: BarData = None
+        self.day_bar: BarData = None
 
         self.window: int = window
         self.window_bar: BarData = None
@@ -262,8 +263,11 @@ class BarGenerator:
         """
         if self.interval == Interval.MINUTE:
             self.update_bar_minute_window(bar)
-        else:
+        elif self.interval == Interval.HOUR:
             self.update_bar_hour_window(bar)
+        else:
+            # day
+            self.update_bar_day_window(bar)
 
     def update_bar_minute_window(self, bar: BarData) -> None:
         """"""
@@ -377,7 +381,116 @@ class BarGenerator:
         # Cache last bar object
         self.last_bar = bar
 
+    def update_bar_day_window(self, bar: BarData) -> None:
+        """"""
+        # If not inited, create window bar object
+        if not self.day_bar:
+            dt = bar.datetime.replace(minute=0, second=0, microsecond=0)
+            self.day_bar = BarData(
+                symbol=bar.symbol,
+                exchange=bar.exchange,
+                datetime=dt,
+                gateway_name=bar.gateway_name,
+                open_price=bar.open_price,
+                high_price=bar.high_price,
+                low_price=bar.low_price,
+                volume=bar.volume
+            )
+            return
+
+        finished_bar = None
+
+        # If minute is 59 and hour is 14, update minute bar into window bar and push
+        if bar.datetime.minute == 59 and bar.datetime.hour == 14:
+            self.day_bar.high_price = max(
+                self.day_bar.high_price,
+                bar.high_price
+            )
+            self.day_bar.low_price = min(
+                self.day_bar.low_price,
+                bar.low_price
+            )
+
+            self.day_bar.close_price = bar.close_price
+            self.day_bar.volume += int(bar.volume)
+            self.day_bar.open_interest = bar.open_interest
+
+            finished_bar = self.day_bar
+            self.day_bar = None
+
+        # If minute bar of new hour, then push existing window bar
+        elif (bar.datetime.hour != self.day_bar.datetime.hour and self.day_bar.datetime.hour == 14):
+            finished_bar = self.day_bar
+
+            dt = bar.datetime.replace(hour=15, minute=0, second=0, microsecond=0)
+            self.day_bar = BarData(
+                symbol=bar.symbol,
+                exchange=bar.exchange,
+                datetime=dt,
+                gateway_name=bar.gateway_name,
+                open_price=bar.open_price,
+                high_price=bar.high_price,
+                low_price=bar.low_price,
+                volume=bar.volume
+            )
+        # Otherwise only update minute bar
+        else:
+            self.day_bar.high_price = max(
+                self.day_bar.high_price,
+                bar.high_price
+            )
+            self.day_bar.low_price = min(
+                self.day_bar.low_price,
+                bar.low_price
+            )
+            self.day_bar.datetime.replace(month=bar.datetime.month, day=bar.datetime.day)
+            self.day_bar.close_price = bar.close_price
+            self.day_bar.volume += int(bar.volume)
+            self.day_bar.open_interest = bar.open_interest
+
+        # Push finished window bar
+        if finished_bar:
+            self.on_day_bar(finished_bar)
+
+        # Cache last bar object
+        self.last_bar = bar
+
     def on_hour_bar(self, bar: BarData) -> None:
+        """"""
+        if self.window == 1:
+            self.on_window_bar(bar)
+        else:
+            if not self.window_bar:
+                self.window_bar = BarData(
+                    symbol=bar.symbol,
+                    exchange=bar.exchange,
+                    datetime=bar.datetime,
+                    gateway_name=bar.gateway_name,
+                    open_price=bar.open_price,
+                    high_price=bar.high_price,
+                    low_price=bar.low_price
+                )
+            else:
+                self.window_bar.high_price = max(
+                    self.window_bar.high_price,
+                    bar.high_price
+                )
+                self.window_bar.low_price = min(
+                    self.window_bar.low_price,
+                    bar.low_price
+                )
+
+            self.window_bar.close_price = bar.close_price
+            self.window_bar.volume += int(bar.volume)
+            self.window_bar.open_interest = bar.open_interest
+
+            self.interval_count += 1
+            if not self.interval_count % self.window:
+                self.interval_count = 0
+                self.on_window_bar(self.window_bar)
+                self.window_bar = None
+
+    def on_day_bar(self, bar: BarData) -> None:
         """"""
         if self.window == 1:
             self.on_window_bar(bar)
