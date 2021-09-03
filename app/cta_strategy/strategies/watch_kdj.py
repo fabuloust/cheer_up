@@ -13,19 +13,28 @@ from vnpy.trader.constant import Interval
 
 class WatchKdjStrategy(CtaTemplate):
     """"""
-    author = "用Python的交易员"
+    author = "银枪小霸王"
 
 
     fixed_size = 1
 
-    parameters = []
+    parameters = ['up_thresh', 'down_thresh']
 
-    variables = ['']
+    variables = ['over_sell', 'over_buy', 'over_sell_15', 'over_buy_15', 'k_1', 'j_15']
+
+    up_thresh = 90
+    down_thresh = 10
+
+    over_sell = False
+    over_buy = False
+    over_sell_15 = False
+    over_buy_15 = False
+    k_1 = 0
+    j_15 = 0
 
     def __init__(self, cta_engine, strategy_name, vt_symbol, setting):
         """"""
         super().__init__(cta_engine, strategy_name, vt_symbol, setting)
-
 
         self.bg = BarGenerator(self.on_bar)
         self.am = ArrayManager()
@@ -33,7 +42,7 @@ class WatchKdjStrategy(CtaTemplate):
         self.bg_day = BarGenerator(self.on_bar, 1, self.on_day_bar, interval=Interval.DAILY)
         self.am_day = ArrayManager()
 
-        self.bg15 = BarGenerator(self.on_bar, 1, self.on_15min_bar, interval=Interval.HOUR)
+        self.bg15 = BarGenerator(self.on_bar, 15, self.on_15min_bar, interval=Interval.MINUTE)
         self.am15 = ArrayManager()
 
         self.file = open('kdj_value.txt', 'w+')
@@ -43,7 +52,7 @@ class WatchKdjStrategy(CtaTemplate):
         Callback when strategy is inited.
         """
         self.write_log("策略初始化")
-        self.load_bar(1)
+        self.load_bar(10)
 
     def on_start(self):
         """
@@ -62,29 +71,32 @@ class WatchKdjStrategy(CtaTemplate):
         """
         Callback of new tick data update.
         """
-        self.bg5.update_tick(tick)
+        self.bg.update_tick(tick)
 
     def on_bar(self, bar: BarData):
         """
         Callback of new bar data update.
         """
         # self.bg5.update_bar(bar)
-        # self.bg15.update_bar(bar)
+        self.bg15.update_bar(bar)
         self.bg_day.update_bar(bar)
         self.am.update_bar(bar)
         if not self.am.inited:
             return
+        self.k_1, d, j = self.am.kdj()
+        if self.k_1 < self.down_thresh:
+            self.over_sell = True
+            if self.over_sell_15:
+                self.write_log(f'k值超卖触发！-{self.vt_symbol}')
+        elif self.k_1 > self.up_thresh:
+            self.over_buy = True
+            if self.over_buy_15:
+                self.write_log(f'K值超买-{self.vt_symbol}')
+        else:
+            self.over_buy = False
+            self.over_sell = False
+
         # self.file.write(f'{self.am.kdj(only_close=True)}, {bar.datetime}\n')
-        
-
-    def on_5min_bar(self, bar: BarData):
-        """"""
-        self.cancel_all()
-
-        self.am5.update_bar(bar)
-        if not self.am5.inited:
-            return
-
 
         # if self.pos == 0:
         #     if self.ma_trend > 0 and self.rsi_value >= self.rsi_long:
@@ -108,6 +120,14 @@ class WatchKdjStrategy(CtaTemplate):
         self.am15.update_bar(bar)
         if not self.am15.inited:
             return
+        k, d, self.j_15 = self.am15.kdj()
+        if self.j_15 < self.down_thresh:
+            self.over_sell_15 = True
+        elif self.j_15 > self.up_thresh:
+            self.over_buy_15 = True
+        else:
+            self.over_sell_15 = False
+            self.over_buy_15 = False
 
     def on_day_bar(self, bar: BarData):
         """"""
