@@ -27,13 +27,14 @@ class LongSignal(CtaSignal):
     此时发出信号
     """
 
-    def __init__(self, signal_pos_dict, period_hour: int = 2):
+    def __init__(self, signal_pos_dict, file,  period_hour: int = 2):
         """Constructor"""
         super().__init__()
         self.signal_pos_dict = signal_pos_dict
         self.bg = BarGenerator(self.on_bar, period_hour, self.on_long_period, Interval.HOUR)
         self.ma_state = 0
         self.am = ArrayManager()
+        self.file = file
 
     def on_tick(self, tick: TickData):
         """
@@ -51,8 +52,8 @@ class LongSignal(CtaSignal):
         self.am.update_bar(bar)
         if not self.am.inited:
             return
-        ma30 = self.am.sma(30, True)[:5]
-        ma60 = self.am.sma(60, True)[:5]
+        ma30 = self.am.sma(30, True)[-5:]
+        ma60 = self.am.sma(60, True)[-5:]
         k, d, j = self.am.kdj()
         if ma30[-1] > ma30[-2] > ma60[-1] > ma60[-2]:
             if self.ma_state != 1:
@@ -184,7 +185,9 @@ class HxtStrategy(TargetPosTemplate):
             "mid": 0,
             "short": 0
         }
-        self.long_signal = LongSignal(self.signal_pos, self.long_period)
+
+        self.file = open('kdj_value.txt', 'w+')
+        self.long_signal = LongSignal(self.signal_pos, self.file, self.long_period)
         self.mid_signal = MidSignal(self.signal_pos, self.mid_period)
         self.short_signal = ShortSignal(self.signal_pos)
 
@@ -206,6 +209,7 @@ class HxtStrategy(TargetPosTemplate):
         Callback when strategy is stopped.
         """
         self.write_log("策略停止")
+        self.file.close()
 
     def on_tick(self, tick: TickData):
         """
@@ -230,8 +234,8 @@ class HxtStrategy(TargetPosTemplate):
             self.long_state, self.mid_state, self.short_state = \
                 self.signal_pos['long'], self.signal_pos['mid'], self.signal_pos['short']
             self.put_event()
-            self.write_log(f'状态变化-{bar.datetime.strftime("%Y-%m-%d %H:%M:%S")-{self.signal_pos}')
-
+            self.write_log(f'状态变化-{bar.datetime.strftime("%Y-%m-%d %H:%M:%S")}-{self.signal_pos}')
+            self.file.write(f'状态变化-{bar.datetime.strftime("%Y-%m-%d %H:%M:%S")}-{self.signal_pos}\n')
 
     def on_order(self, order: OrderData):
         """
